@@ -1,15 +1,17 @@
 import telebot
 from telebot import types
 import requests
-import Token
+#import Token
+import os
 
+bot = telebot.TeleBot(os.environ['Telegram_Token'])
 
 a: bool
 a = False  # Переменная a отвечает за выполнение блока с обработкой самостоятельно введённого кода валюты
 to_or_from: bool  # Если данная переменная = 1, ты мы переводим из рублей в валюту, иначе - в рубли из валюты
 currency: str
 
-bot = telebot.TeleBot(Token.Telegram_TOKEN)
+#bot = telebot.TeleBot(Token.Telegram_TOKEN)
 
 
 # @bot.message_handler(content_types=['sticker'])
