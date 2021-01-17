@@ -5,12 +5,17 @@ import os
 
 bot = telebot.TeleBot(os.environ['Telegram_Token'])
 
-a: bool
-a = False  # Переменная a отвечает за выполнение блока, связанного с конвертацией непосредственно
-to_or_from: bool  # Если данная переменная = 1, то мы переводим из рублей в валюту, иначе - в рубли из валюты
-currency: str
+a = dict()  # Переменная a отвечает за выполнение блока,
+# связанного с конвертацией валют непосредственно, для каждого она своя
+
+to_or_from = dict()  # Если данная переменная = 1, то мы переводим из рублей в валюту,
+# иначе - в рубли из валюты, для каждого пользователя он своя
+
+currency = dict()  # Переменная currency отвечает за выбранную валюту,
+# для каждого пользователя она своя, так же как и две предыдущих
 
 
+# Данный блок не убран, т.к. он служит для получения id стикера, что бывает очень полезно
 # @bot.message_handler(content_types=['sticker'])
 # def welcome(message):
 #     print(message.sticker.file_id)
@@ -22,11 +27,13 @@ def welcome(message):
     item1 = types.KeyboardButton("$")
     item2 = types.KeyboardButton("€")
     item3 = types.KeyboardButton("другая валюта")
-    markup.add(item1, item2, item3)
+    item4 = types.KeyboardButton('а откуда данные?')
+    markup.add(item1, item2, item3, item4)
 
     bot.send_sticker(message.chat.id, 'CAACAgIAAxkBAAICqF_vkbY4JoMT7LB7u8ybckSALiYPAAJIBAACztjoC8AMSL-Qm9uMHgQ')
     bot.send_message(message.chat.id, 'Я - бот, который умеет конвертировать рубли в валюту, или, наоборот')
-    bot.send_message(message.chat.id, 'Что из предложенного интересует? Просто нажми на кнопку внизу, а дальше разберёмся)', reply_markup=markup)
+    bot.send_message(message.chat.id, 'Что из предложенного интересует?'
+                                      ' Просто нажми на кнопку внизу, а дальше разберёмся', reply_markup=markup)
 
 
 def inline_markup(message):
@@ -44,37 +51,50 @@ def voting_processing(message):
     global a
 
     if message.text == '€':
-        currency = 'EUR'
+        currency[message.chat.id] = 'EUR'
         inline_markup(message)
 
     elif message.text == '$':
-        currency = 'USD'
+        currency[message.chat.id] = 'USD'
         inline_markup(message)
 
     elif message.text == 'другая валюта':
+        a[message.chat.id] = 0
         bot.send_message(message.chat.id, 'Введи валюту в формате ISO 4217')
 
-    elif a:
+    elif message.text == 'а откуда данные?':
+        bot.send_message(message.chat.id, 'Все курсы я беру с сайта ЦБРФ, '
+                                          'вот, собственно, и он https://www.cbr.ru/currency_base/daily/')
+        bot.send_message(message.chat.id, 'И да, курсы в обменниках могут отличаться. Хвала нашему законодательству)')
+
+    elif a[message.chat.id] == 1:
         try:
-            currency1 = ('RUB' if to_or_from == 1 else currency)
-            currency2 = (currency if to_or_from == 1 else 'RUB')
-            value = "%.3f" % (float(message.text) * requests.get('https://www.cbr-xml-daily.ru/latest.js').json()['rates'][currency] if to_or_from == 1 else
-                     float(message.text) / requests.get('https://www.cbr-xml-daily.ru/latest.js').json()['rates'][currency])
+            currency1 = ('RUB' if to_or_from[message.chat.id] == 1 else str(currency[message.chat.id]))
+            currency2 = (str(currency[message.chat.id]) if to_or_from[message.chat.id] == 1 else 'RUB')
+            value = "%.3f" % (float(message.text) * requests.get('https://www.cbr-xml-daily.ru/latest.js')
+                              .json()['rates'][currency[message.chat.id]] if to_or_from[message.chat.id] == 1 else
+                              float(message.text) / requests.get('https://www.cbr-xml-daily.ru/latest.js')
+                              .json()['rates'][currency[message.chat.id]])
             bot.send_message(message.chat.id, f'{message.text} {currency1} - это {value} {currency2}')
-            a = 0
+
+            del a[message.chat.id]
+            del currency[message.chat.id]
+            del to_or_from[message.chat.id]
         except ValueError:
-            a = 1
+            a[message.chat.id] = 1
 
     else:
         try:
-            requests.get('https://www.cbr-xml-daily.ru/latest.js').json()['rates'][message.text]
-            currency = message.text
+            test = requests.get('https://www.cbr-xml-daily.ru/latest.js').json()['rates'][message.text]
+            currency[message.chat.id] = message.text
             inline_markup(message)
         except KeyError:
             bot.send_sticker(message.chat.id, 'CAACAgIAAxkBAAICrF_vkeKrTq6OFXkCWBZx1Taz3wNxAAIcAwACztjoC3bCGmnfsBbDHgQ')
-            bot.send_message(message.chat.id, 'Выбери, пожалуйста, один из вариантов со встроенной клавиатуры или введи один из поддерживаемых кодов валют')
+            bot.send_message(message.chat.id, 'Выбери, пожалуйста, один из вариантов со встроенной клавиатуры'
+                                              ' или введи один из поддерживаемых кодов валют')
             bot.send_message(message.chat.id, 'А вот, кстати, и они:')
             bot.send_photo(message.chat.id, photo=open('currencies.png', 'rb'))
+            bot.send_message(message.chat.id, 'Только, пожалуйста, введи курс именно большими буквами')
 
 
 def inline_markup_range_2(call):
@@ -93,19 +113,20 @@ def callback_inline(call):
     if call.data == 'conversion':
         inline_markup_range_2(call)
     elif call.data == 'rate':
-        line = '1 ' + str(currency) + ' сейчас стоит ' + str("%.3f" % (1 / requests.get('https://www.cbr-xml-daily.ru/latest.js').json()['rates'][currency])) + ' RUB'
+        line = '1 ' + str(currency[call.message.chat.id]) + ' сейчас стоит ' + str("%.3f" % (1 / requests.get(
+            'https://www.cbr-xml-daily.ru/latest.js').json()['rates'][currency[call.message.chat.id]])) + ' RUB'
         bot.send_message(call.message.chat.id, text=line)
 
     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
     if call.data == 'to_currency':
-        to_or_from = True
+        to_or_from[call.message.chat.id] = 1
         bot.send_message(call.message.chat.id, 'Введи сумму, которую хочешь преобразовать')
-        a = True
+        a[call.message.chat.id] = 1
     elif call.data == 'from_currency':
-        to_or_from = False
+        to_or_from[call.message.chat.id] = 0
         bot.send_message(call.message.chat.id, 'Введи сумму которую хочешь преобразовать')
-        a = True
+        a[call.message.chat.id] = 1
 
 
 bot.polling(none_stop=True, interval=0)
